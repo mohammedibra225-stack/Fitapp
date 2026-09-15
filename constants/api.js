@@ -2,12 +2,9 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const LAN_IP = '192.168.1.9';
-const API_PORT = 8000;
+export const API_BASE_URL = 'https://fitapp-api-7grb.onrender.com';
 
 const MEAL_PLAN_CACHE_PREFIX = '@fitapp/meal-plan/';
-
-export const API_BASE_URL = `http://${LAN_IP}:${API_PORT}`;
 
 export function mealPlanCacheKey(userId) {
 	return `${MEAL_PLAN_CACHE_PREFIX}${userId}`;
