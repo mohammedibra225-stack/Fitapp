@@ -38,6 +38,24 @@ OLLAMA_KEEP_ALIVE: str = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
 OLLAMA_NUM_PREDICT: int = int(os.getenv("OLLAMA_NUM_PREDICT", "400"))
 
 # ---------------------------------------------------------------------------
+# Hugging Face (analyse de photos de repas via ZeroGPU)
+# ---------------------------------------------------------------------------
+# Le Space Hugging Face de vision (Qwen2.5-VL) tourne sur du materiel
+# ZeroGPU. Sans authentification, le quota de requetes ZeroGPU anonyme
+# est tres bas et s'epuise vite ("You have exceeded your ZeroGPU runs
+# limit"). En fournissant un token Hugging Face (lecture seule suffit),
+# le quota devient nettement plus eleve.
+#
+# Cree un token sur https://huggingface.co/settings/tokens (role "read")
+# et renseigne HUGGINGFACE_TOKEN dans le .env. Reste facultatif : si
+# absent, le client Gradio se connecte en anonyme comme avant.
+HUGGINGFACE_TOKEN: str | None = (
+    os.getenv("HUGGINGFACE_TOKEN")
+    or os.getenv("HF_TOKEN")
+    or None
+)
+
+# ---------------------------------------------------------------------------
 # Seuils de confiance pour l'analyse d'aliments
 # ---------------------------------------------------------------------------
 # confidence >= HIGH_CONFIDENCE_THRESHOLD -> fiable

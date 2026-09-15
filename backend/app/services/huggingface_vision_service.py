@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 from gradio_client import Client, handle_file
 
+from app.config_ai import HUGGINGFACE_TOKEN
 from app.schemas.meal_analysis import MealVisionAnalysis
 
 
@@ -82,11 +83,15 @@ class HuggingFaceVisionService:
 
         if self.client is None:
             logger.info(
-                "Connexion au Space Hugging Face : %s",
+                "Connexion au Space Hugging Face : %s (authentifie=%s)",
                 SPACE_ID,
+                bool(HUGGINGFACE_TOKEN),
             )
 
-            self.client = Client(SPACE_ID)
+            self.client = Client(
+                SPACE_ID,
+                hf_token=HUGGINGFACE_TOKEN,
+            )
 
         return self.client
 
