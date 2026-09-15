@@ -487,6 +487,7 @@ def recalculate_meal_analysis(
             {
                 "food_slug": food.slug,
                 "food_name": get_translated_food_name(
+                    db,
                     food,
                     language,
                 ),

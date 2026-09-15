@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 from difflib import SequenceMatcher
@@ -7,7 +8,17 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.config_ai import HIGH_CONFIDENCE_THRESHOLD, MEDIUM_CONFIDENCE_THRESHOLD
 from app.models.food import Food
+from app.schemas.meal_analysis import (
+    MatchedFoodAnalysisItem,
+    MealAnalysisDetail,
+    MealVisionAnalysis,
+    NutritionTotals,
+)
+from app.services.meal_calculator import calculate_food_nutrition
+
+logger = logging.getLogger("fitapp.food_matching_service")
 
 
 # ============================================================
@@ -367,7 +378,7 @@ def get_translated_food_name(
 
             translation_language = getattr(
                 translation,
-                "language",
+                "language_code",
                 None,
             )
 
@@ -400,91 +411,206 @@ def get_translated_food_name(
 
 def match_and_calculate_meal_items(
     db: Session,
-    detected_foods: list,
-) -> list:
+    raw_analysis: MealVisionAnalysis,
+    language: str = "fr",
+) -> MealAnalysisDetail:
     """
-    Associe les aliments détectés par l'IA aux aliments
-    existants dans la base Fitapp.
+    Associe les aliments détectés par la vision IA aux aliments
+    existants dans la base Fitapp, puis calcule les macros avec
+    le Meal Calculator existant (calculate_food_nutrition).
 
     Cette fonction ne modifie pas les valeurs nutritionnelles
-    selon la préparation.
+    selon la préparation : les valeurs viennent du Food DB de base.
+
+    Robustesse :
+    - un aliment non trouvé dans la DB reste `matched=False` mais
+      n'interrompt pas l'analyse des autres aliments ;
+    - un aliment trouvé dans la DB dont le calcul échoue (unité
+      incompatible, poids unitaire manquant, etc.) reste `matched=True`
+      avec des macros à None, mais n'interrompt pas non plus l'analyse
+      des autres aliments ni ne fait échouer toute la requête.
     """
 
     index = FoodIndex.load_from_db(db)
 
-    results = []
+    matched_items: list[MatchedFoodAnalysisItem] = []
 
-    for detected in detected_foods:
+    total_calories = 0.0
+    total_protein = 0.0
+    total_carbs = 0.0
+    total_fat = 0.0
+    total_fiber = 0.0
 
-        if isinstance(detected, dict):
-            detected_name = detected.get(
-                "food_name"
-            ) or detected.get(
-                "detected_name"
-            )
+    for detected in raw_analysis.foods:
 
-            quantity = detected.get(
-                "estimated_quantity_g"
-            )
+        detected_name = detected.name
+        quantity = detected.estimated_quantity
+        unit = detected.unit or "g"
+        preparation = detected.preparation
+        confidence = detected.confidence
+        alternatives = list(detected.alternatives or [])
 
-            preparation = detected.get(
-                "preparation"
-            )
-
-            confidence = detected.get(
-                "confidence"
-            )
-
-        else:
-            detected_name = str(detected)
-            quantity = None
-            preparation = None
-            confidence = None
-
-        match = index.find_food(
-            detected_name
+        logger.info(
+            "Aliment detecte par la vision: name=%r quantity=%s unit=%s "
+            "preparation=%r confidence=%s",
+            detected_name,
+            quantity,
+            unit,
+            preparation,
+            confidence,
         )
 
-        if match:
+        match_result = index.find_food(detected_name)
 
-            food, match_confidence = match
+        if match_result is None:
 
-            results.append({
-                "detected_name": detected_name,
-                "matched": True,
-                "matched_food_id": getattr(
-                    food,
-                    "id",
-                    None,
+            logger.info(
+                "Aucun match DB trouve pour l'aliment detecte %r",
+                detected_name,
+            )
+
+            matched_items.append(
+                MatchedFoodAnalysisItem(
+                    detected_name=detected_name,
+                    matched=False,
+                    matched_food_id=None,
+                    matched_food_slug=None,
+                    matched_food_name=None,
+                    preparation=preparation,
+                    confidence=confidence,
+                    alternatives=alternatives,
+                    needs_confirmation=True,
+                    needs_correction=True,
+                    estimated_quantity=quantity,
+                    estimated_unit=unit,
+                    calculated_grams=None,
+                    calories_kcal=None,
+                    protein_g=None,
+                    carbs_g=None,
+                    fat_g=None,
+                    fiber_g=None,
+                )
+            )
+            continue
+
+        food, match_confidence = match_result
+
+        logger.info(
+            "Aliment matche: detected=%r -> slug=%s (confiance match=%s)",
+            detected_name,
+            getattr(food, "slug", None),
+            match_confidence,
+        )
+
+        try:
+            nutrition = calculate_food_nutrition(
+                food=food,
+                quantity=quantity,
+                unit=unit,
+            )
+
+        except Exception as exc:
+            # L'aliment EST trouve dans la DB : on ne le fait pas
+            # basculer en "non trouve". On log l'erreur exacte du
+            # Meal Calculator et on continue avec les autres aliments
+            # au lieu de faire echouer toute l'analyse.
+            logger.error(
+                "Echec du calcul nutritionnel pour %r "
+                "(slug=%s, quantity=%s, unit=%s): %s",
+                detected_name,
+                getattr(food, "slug", None),
+                quantity,
+                unit,
+                exc,
+            )
+
+            matched_items.append(
+                MatchedFoodAnalysisItem(
+                    detected_name=detected_name,
+                    matched=True,
+                    matched_food_id=getattr(food, "id", None),
+                    matched_food_slug=getattr(food, "slug", None),
+                    matched_food_name=get_translated_food_name(
+                        db, food, language
+                    ),
+                    preparation=preparation,
+                    confidence=confidence,
+                    alternatives=alternatives,
+                    needs_confirmation=True,
+                    needs_correction=True,
+                    estimated_quantity=quantity,
+                    estimated_unit=unit,
+                    calculated_grams=None,
+                    calories_kcal=None,
+                    protein_g=None,
+                    carbs_g=None,
+                    fat_g=None,
+                    fiber_g=None,
+                )
+            )
+            continue
+
+        calories = float(nutrition["calories_kcal"])
+        protein = float(nutrition["protein_g"])
+        carbs = float(nutrition["carbs_g"])
+        fat = float(nutrition["fat_g"])
+        fiber = float(nutrition["fiber_g"])
+
+        logger.info(
+            "Macros calculees pour %r (slug=%s): calories=%s protein=%s "
+            "carbs=%s fat=%s",
+            detected_name,
+            getattr(food, "slug", None),
+            calories,
+            protein,
+            carbs,
+            fat,
+        )
+
+        total_calories += calories
+        total_protein += protein
+        total_carbs += carbs
+        total_fat += fat
+        total_fiber += fiber
+
+        matched_items.append(
+            MatchedFoodAnalysisItem(
+                detected_name=detected_name,
+                matched=True,
+                matched_food_id=getattr(food, "id", None),
+                matched_food_slug=getattr(food, "slug", None),
+                matched_food_name=get_translated_food_name(
+                    db, food, language
                 ),
-                "matched_food_slug": getattr(
-                    food,
-                    "slug",
-                    None,
-                ),
-                "matched_food_name": get_translated_food_name(
-                    db,
-                    food,
-                    "fr",
-                ),
-                "estimated_quantity_g": quantity,
-                "preparation": preparation,
-                "confidence": confidence,
-                "match_confidence": match_confidence,
-            })
+                preparation=preparation,
+                confidence=confidence,
+                alternatives=alternatives,
+                needs_confirmation=confidence < HIGH_CONFIDENCE_THRESHOLD,
+                needs_correction=confidence < MEDIUM_CONFIDENCE_THRESHOLD,
+                estimated_quantity=quantity,
+                estimated_unit=unit,
+                calculated_grams=float(nutrition["grams"]),
+                calories_kcal=calories,
+                protein_g=protein,
+                carbs_g=carbs,
+                fat_g=fat,
+                fiber_g=fiber,
+            )
+        )
 
-        else:
+    totals = NutritionTotals(
+        calories=round(total_calories, 1),
+        protein_g=round(total_protein, 1),
+        carbs_g=round(total_carbs, 1),
+        fat_g=round(total_fat, 1),
+        fiber_g=round(total_fiber, 1),
+    )
 
-            results.append({
-                "detected_name": detected_name,
-                "matched": False,
-                "matched_food_id": None,
-                "matched_food_slug": None,
-                "matched_food_name": None,
-                "estimated_quantity_g": quantity,
-                "preparation": preparation,
-                "confidence": confidence,
-                "match_confidence": 0.0,
-            })
-
-    return results
+    return MealAnalysisDetail(
+        analysis_id=None,
+        meal_type=raw_analysis.meal_type,
+        overall_confidence=raw_analysis.overall_confidence,
+        foods=matched_items,
+        totals=totals,
+        notes=list(raw_analysis.notes or []),
+    )
