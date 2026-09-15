@@ -1,0 +1,59 @@
+{
+  "common": {
+    "continue": "Continue",
+    "cancel": "Cancel",
+    "save": "Save",
+    "back": "Back",
+    "next": "Next",
+    "skip": "Skip"
+  },
+  "navigation": {
+    "home": "Home",
+    "nutrition": "Nutrition",
+    "training": "Training",
+    "progress": "Progress",
+    "assistant": "Assistant",
+    "profile": "Profile"
+  },
+  "onboarding": {
+    "welcome": "Welcome",
+    "choose_language": "Choose your language",
+    "choose_gender": "What is your gender?",
+    "age": "How old are you?",
+    "height": "What is your height?",
+    "weight": "What is your weight?",
+    "activity_level": "What is your activity level?",
+    "sport": "What sport do you practice?",
+    "goal": "What are your goals?"
+  },
+  "nutrition": {
+    "calories": "Calories",
+    "protein": "Protein",
+    "carbohydrates": "Carbohydrates",
+    "fat": "Fat",
+    "water": "Water",
+    "breakfast": "Breakfast",
+    "lunch": "Lunch",
+    "dinner": "Dinner",
+    "snacks": "Snacks"
+  },
+  "training": {
+    "workout": "Workout",
+    "exercises": "Exercises",
+    "sets": "Sets",
+    "repetitions": "Repetitions",
+    "rest": "Rest"
+  },
+  "assistant": {
+    "title": "AI Assistant",
+    "placeholder": "Type your message...",
+    "thinking": "Assistant is thinking..."
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "notifications": "Notifications",
+    "notifications_description": "Receive app notifications"
+  },
+  "welcome": "Welcome, {name}"
+}

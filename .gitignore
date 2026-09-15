@@ -1,41 +1,107 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# ============================================================
+# FITAPP - Git Ignore
+# Expo / React Native + FastAPI / Python
+# ============================================================
 
-# dependencies
+# ------------------------------------------------------------
+# Node / JavaScript
+# ------------------------------------------------------------
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
+# ------------------------------------------------------------
 # Expo
+# ------------------------------------------------------------
 .expo/
+.expo-shared/
 dist/
 web-build/
 expo-env.d.ts
 
-# Native
-.kotlin/
+# ------------------------------------------------------------
+# React Native / Metro
+# ------------------------------------------------------------
+.metro-health-check*
 *.orig.*
+
+# ------------------------------------------------------------
+# Native
+# ------------------------------------------------------------
+.kotlin/
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
 
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env*.local
-
-# typescript
-*.tsbuildinfo
-
-# generated native folders
+# Generated native folders
 /ios
 /android
+
+# ------------------------------------------------------------
+# Environment / secrets
+# ------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# ------------------------------------------------------------
+# Python
+# ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+mon_env/
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ------------------------------------------------------------
+# FastAPI / Backend
+# ------------------------------------------------------------
+backend/.env
+backend/.venv/
+backend/venv/
+backend/env/
+backend/mon_env/
+
+# ------------------------------------------------------------
+# IDE
+# ------------------------------------------------------------
+.idea/
+.vscode/
+.kilo/
+
+# ------------------------------------------------------------
+# OS
+# ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ------------------------------------------------------------
+# Build / temporary files
+# ------------------------------------------------------------
+*.log
+*.tmp
+*.temp
+
+# ------------------------------------------------------------
+# TypeScript
+# ------------------------------------------------------------
+*.tsbuildinfo

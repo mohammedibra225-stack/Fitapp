@@ -1,0 +1,17 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+python-dotenv==1.0.1
+httpx==0.28.1
+
+# Base de donnees (regle 26/27/28)
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+alembic==1.14.0
+
+# Upload d'image + vision locale (AI Meal Analysis via Ollama)
+# Le modele de vision est servi par Ollama en local : aucune librairie
+# fournisseur n'est necessaire, l'appel se fait en HTTP avec httpx.
+python-multipart==0.0.20
+Pillow==11.0.0
+pillow-heif==0.21.0

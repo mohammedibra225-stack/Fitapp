@@ -1,10 +1,11 @@
 {
   "expo": {
-    "name": "fitapp",
+    "name": "Fitapp",
     "slug": "fitapp",
+    "scheme": "fitapp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
@@ -19,6 +20,19 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-font",
+      "expo-splash-screen",
+      "expo-router",
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Fitapp a besoin de la caméra pour analyser tes repas en photo.",
+          "photosPermission": "Fitapp a besoin d'accéder à tes photos pour analyser un repas."
+        }
+      ]
+    ]
   }
 }

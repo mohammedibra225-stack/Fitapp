@@ -1,0 +1,59 @@
+{
+  "common": {
+    "continue": "متابعة",
+    "cancel": "إلغاء",
+    "save": "حفظ",
+    "back": "رجوع",
+    "next": "التالي",
+    "skip": "تخطي"
+  },
+  "navigation": {
+    "home": "الرئيسية",
+    "nutrition": "التغذية",
+    "training": "التدريب",
+    "progress": "التقدم",
+    "assistant": "المساعد",
+    "profile": "الملف الشخصي"
+  },
+  "onboarding": {
+    "welcome": "مرحباً",
+    "choose_language": "اختر لغتك",
+    "choose_gender": "ما هو جنسك؟",
+    "age": "كم عمرك؟",
+    "height": "ما هو طولك؟",
+    "weight": "ما هو وزنك؟",
+    "activity_level": "ما هو مستوى نشاطك؟",
+    "sport": "ما هي الرياضة التي تمارسها؟",
+    "goal": "ما هي أهدافك؟"
+  },
+  "nutrition": {
+    "calories": "السعرات الحرارية",
+    "protein": "البروتين",
+    "carbohydrates": "الكربوهيدرات",
+    "fat": "الدهون",
+    "water": "الماء",
+    "breakfast": "الإفطار",
+    "lunch": "الغداء",
+    "dinner": "العشاء",
+    "snacks": "الوجبات الخفيفة"
+  },
+  "training": {
+    "workout": "التمرين",
+    "exercises": "التمارين",
+    "sets": "المجموعات",
+    "repetitions": "التكرارات",
+    "rest": "الراحة"
+  },
+  "assistant": {
+    "title": "المساعد الذكي",
+    "placeholder": "اكتب رسالتك...",
+    "thinking": "المساعد يفكر..."
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "language": "اللغة",
+    "notifications": "الإشعارات",
+    "notifications_description": "تلقي إشعارات التطبيق"
+  },
+  "welcome": "مرحباً، {name}"
+}

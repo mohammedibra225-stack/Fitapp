@@ -1,0 +1,59 @@
+{
+  "common": {
+    "continue": "Continuer",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "back": "Retour",
+    "next": "Suivant",
+    "skip": "Passer"
+  },
+  "navigation": {
+    "home": "Accueil",
+    "nutrition": "Nutrition",
+    "training": "Entraînement",
+    "progress": "Progrès",
+    "assistant": "Assistant",
+    "profile": "Profil"
+  },
+  "onboarding": {
+    "welcome": "Bienvenue",
+    "choose_language": "Choisissez votre langue",
+    "choose_gender": "Quel est votre genre ?",
+    "age": "Quel âge avez-vous ?",
+    "height": "Quelle est votre taille ?",
+    "weight": "Quel est votre poids ?",
+    "activity_level": "Quel est votre niveau d'activité ?",
+    "sport": "Quel sport pratiquez-vous ?",
+    "goal": "Quels sont vos objectifs ?"
+  },
+  "nutrition": {
+    "calories": "Calories",
+    "protein": "Protéines",
+    "carbohydrates": "Glucides",
+    "fat": "Lipides",
+    "water": "Eau",
+    "breakfast": "Petit-déjeuner",
+    "lunch": "Déjeuner",
+    "dinner": "Dîner",
+    "snacks": "Collations"
+  },
+  "training": {
+    "workout": "Séance d'entraînement",
+    "exercises": "Exercices",
+    "sets": "Séries",
+    "repetitions": "Répétitions",
+    "rest": "Repos"
+  },
+  "assistant": {
+    "title": "Assistant IA",
+    "placeholder": "Écrivez votre message...",
+    "thinking": "L'assistant réfléchit..."
+  },
+  "settings": {
+    "title": "Paramètres",
+    "language": "Langue",
+    "notifications": "Notifications",
+    "notifications_description": "Recevoir les notifications de l'application"
+  },
+  "welcome": "Bienvenue, {name}"
+}
