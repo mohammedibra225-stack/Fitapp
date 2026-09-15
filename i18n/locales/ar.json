@@ -204,10 +204,10 @@
         "quota_exhausted_title": "تم الوصول إلى الحد اليومي",
         "quota_exhausted_message": "لقد استخدمت {limit} تحليلات لوجباتك اليوم. عد غداً!",
         "service_unavailable_title": "خدمة التحليل غير متوفرة",
-        "service_unavailable_message": "خدمة التحليل (Ollama) لا تستجيب حالياً. تأكد من تشغيلها ثم أعد المحاولة.",
+        "service_unavailable_message": "خدمة تحليل الذكاء الاصطناعي لا تستجيب حالياً. حاول مرة أخرى بعد قليل.",
         "service_retry": "إعادة المحاولة",
         "analyzing_elapsed": "مرّت {seconds} ثانية",
-        "analyzing_patience": "على جهاز بدون وحدة معالجة رسومية، قد يستغرق التحليل من 30 إلى 90 ثانية. اترك هذه الشاشة مفتوحة ولا تغلق التطبيق."
+        "analyzing_patience": "قد يستغرق التحليل حتى 60 ثانية. اترك هذه الشاشة مفتوحة ولا تغلق التطبيق."
     },
     "settings": {
         "title": "الإعدادات",

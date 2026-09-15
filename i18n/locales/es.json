@@ -204,10 +204,10 @@
         "quota_exhausted_title": "Límite diario alcanzado",
         "quota_exhausted_message": "Has usado tus {limit} análisis de comida de hoy. ¡Vuelve mañana!",
         "service_unavailable_title": "Servicio de análisis no disponible",
-        "service_unavailable_message": "El servicio de análisis (Ollama) no responde ahora mismo. Comprueba que esté iniciado e inténtalo de nuevo.",
+        "service_unavailable_message": "El servicio de análisis de IA no responde en este momento. Inténtalo de nuevo en unos instantes.",
         "service_retry": "Reintentar",
         "analyzing_elapsed": "{seconds} s transcurridos",
-        "analyzing_patience": "En un dispositivo sin GPU, el análisis puede tardar de 30 a 90 segundos. Deja esta pantalla abierta y no cierres la aplicación."
+        "analyzing_patience": "El análisis puede tardar hasta 60 segundos. Deja esta pantalla abierta y no cierres la aplicación."
     },
     "settings": {
         "title": "Ajustes",

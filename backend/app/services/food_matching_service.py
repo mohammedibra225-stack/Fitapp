@@ -1,259 +1,490 @@
-"""
-Service de correspondance (matching) entre les aliments détectés par l'IA
-et la base de données Food de Fitapp.
-
-Prend en compte :
-- La résolution multilingue via les FoodTranslation (FR, EN, AR, ES)
-- Le slug des Food
-- L'enrichissement avec les seuils de confiance (HIGH / MEDIUM)
-- Le calcul nutritionnel via le service existant meal_calculator
-
-Ce service est indépendant du fournisseur de vision : il consomme un
-MealVisionAnalysis, peu importe le modèle qui l'a produit.
-"""
-
 from __future__ import annotations
 
-import difflib
 import re
 import unicodedata
-from decimal import Decimal
-from typing import Dict, List, Optional, Tuple
-from uuid import UUID
+from difflib import SequenceMatcher
+from typing import Optional
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
-from app.config_ai import (
-    HIGH_CONFIDENCE_THRESHOLD,
-    MEDIUM_CONFIDENCE_THRESHOLD,
-)
-from app.models.food import Food, FoodTranslation
-from app.schemas.meal_analysis import (
-    MatchedFoodAnalysisItem,
-    MealAnalysisDetail,
-    MealVisionAnalysis,
-    MealVisionFood,
-    NutritionTotals,
-)
-from app.services.meal_calculator import calculate_food_nutrition
+from app.models.food import Food
 
 
-def strip_accents(value: str) -> str:
-    """Retire les accents d'une chaîne de caractères."""
-    return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+# ============================================================
+# ALIAS COURANTS
+# ============================================================
+
+COMMON_ALIASES = {
+    "pommes de terre": "pomme de terre",
+    "pommes de terre frites": "pomme de terre",
+    "patates": "pomme de terre",
+    "patate": "pomme de terre",
+
+    "potatoes": "potato",
+    "french fries": "potato",
+    "fries": "potato",
+
+    "patatas": "papa",
+
+    "pommes": "pomme",
+    "bananes": "banane",
+    "oranges": "orange",
+    "tomates": "tomate",
+    "oeufs": "oeuf",
+    "œufs": "oeuf",
+}
 
 
-def normalize_food_name(value: str) -> str:
-    """Normalise un nom pour la comparaison : minuscules, sans ponctuation, sans accents."""
-    val = strip_accents(value).lower()
-    val = re.sub(r"[^a-z0-9\s]", " ", val)
-    return re.sub(r"\s+", " ", val).strip()
+# ============================================================
+# MOTS DE PREPARATION
+# ============================================================
 
+PREPARATION_WORDS = {
+    "cuit",
+    "cuite",
+    "cuits",
+    "cuites",
+
+    "frit",
+    "frite",
+    "frites",
+    "frits",
+    "friture",
+
+    "grille",
+    "grillee",
+    "grillees",
+    "grilles",
+
+    "bouilli",
+    "bouillie",
+    "bouillis",
+    "bouillies",
+
+    "vapeur",
+
+    "roti",
+    "rotie",
+    "rotis",
+    "roties",
+
+    "croustillant",
+    "croustillante",
+    "croustillants",
+    "croustillantes",
+
+    "cru",
+    "crue",
+    "crus",
+    "crues",
+}
+
+
+# ============================================================
+# NORMALISATION
+# ============================================================
+
+def normalize_text(value: str) -> str:
+    """
+    Normalise un texte pour faciliter la recherche :
+
+    - minuscules
+    - suppression des accents
+    - remplacement des caractères spéciaux
+    - espaces propres
+    """
+
+    if not value:
+        return ""
+
+    value = str(value).strip().lower()
+
+    # Suppression des accents
+    value = unicodedata.normalize("NFD", value)
+    value = "".join(
+        char
+        for char in value
+        if unicodedata.category(char) != "Mn"
+    )
+
+    # Apostrophes / tirets -> espace
+    value = re.sub(r"[-_/']", " ", value)
+
+    # Garder lettres + chiffres + espaces
+    value = re.sub(r"[^a-z0-9\s]", " ", value)
+
+    # Espaces multiples
+    value = re.sub(r"\s+", " ", value)
+
+    return value.strip()
+
+
+# ============================================================
+# CANONICALISATION
+# ============================================================
+
+def canonicalize_food_name(name: str) -> str:
+    """
+    Transforme un nom détecté par l'IA vers une forme canonique.
+    """
+
+    normalized = normalize_text(name)
+
+    if not normalized:
+        return ""
+
+    # Alias exact
+    if normalized in COMMON_ALIASES:
+        return normalize_text(COMMON_ALIASES[normalized])
+
+    # Alias après suppression des mots de préparation
+    words = normalized.split()
+
+    cleaned_words = [
+        word
+        for word in words
+        if word not in PREPARATION_WORDS
+    ]
+
+    cleaned = " ".join(cleaned_words).strip()
+
+    if cleaned in COMMON_ALIASES:
+        return normalize_text(COMMON_ALIASES[cleaned])
+
+    return cleaned
+
+
+# ============================================================
+# FOOD INDEX
+# ============================================================
 
 class FoodIndex:
-    """Index en mémoire des Food pour une recherche rapide multilingue."""
+    """
+    Index des aliments disponibles dans la base Fitapp.
 
-    def __init__(self, foods: List[Food]):
-        self.foods_by_id: Dict[UUID, Food] = {f.id: f for f in foods}
-        # maps normalized term -> food
-        self.term_to_food: Dict[str, Food] = {}
-        # maps original food slug -> food
-        self.slug_to_food: Dict[str, Food] = {}
+    Objectif :
+    - éviter les faux matchs
+    - gérer les pluriels simples
+    - gérer les accents
+    - gérer les mots de préparation
+    - gérer quelques alias courants
+    """
+
+    def __init__(self, foods: list[Food]):
+        self.foods = foods
+
+        self.normalized_map: dict[str, Food] = {}
 
         for food in foods:
-            self.slug_to_food[food.slug] = food
-            norm_slug = normalize_food_name(food.slug.replace("_", " "))
-            if norm_slug:
-                self.term_to_food[norm_slug] = food
+            slug = getattr(food, "slug", None)
 
-            for trans in food.translations:
-                norm_trans = normalize_food_name(trans.name)
-                if norm_trans and norm_trans not in self.term_to_food:
-                    self.term_to_food[norm_trans] = food
+            if not slug:
+                continue
+
+            normalized_slug = canonicalize_food_name(
+                slug.replace("_", " ")
+            )
+
+            if normalized_slug:
+                self.normalized_map[normalized_slug] = food
+
+    # --------------------------------------------------------
+    # CHARGEMENT
+    # --------------------------------------------------------
 
     @classmethod
     def load_from_db(cls, db: Session) -> "FoodIndex":
-        stmt = select(Food).options(selectinload(Food.translations))
-        foods = db.execute(stmt).scalars().unique().all()
+        foods = db.query(Food).all()
         return cls(foods)
 
-    def find_food(self, query: str) -> Optional[Tuple[Food, float]]:
-        """
-        Recherche un aliment par correspondance exacte ou approchée.
-        Retourne (Food, similarity_score) ou None si non trouvé.
-        """
-        norm_query = normalize_food_name(query)
-        if not norm_query:
+    # --------------------------------------------------------
+    # SUPPRESSION PREPARATION
+    # --------------------------------------------------------
+
+    def _remove_preparation_words(self, value: str) -> str:
+        normalized = normalize_text(value)
+
+        words = normalized.split()
+
+        cleaned = [
+            word
+            for word in words
+            if word not in PREPARATION_WORDS
+        ]
+
+        return " ".join(cleaned).strip()
+
+    # --------------------------------------------------------
+    # RECHERCHE EXACTE
+    # --------------------------------------------------------
+
+    def _find_exact(self, value: str) -> Optional[Food]:
+        normalized = canonicalize_food_name(value)
+
+        if not normalized:
             return None
 
-        # 1. Correspondance exacte sur terme ou slug
-        if norm_query in self.term_to_food:
-            return self.term_to_food[norm_query], 1.0
+        return self.normalized_map.get(normalized)
 
-        # 2. Correspondance par sous-chaîne ou mot clé
-        for term, food in self.term_to_food.items():
-            if norm_query == term:
+    # --------------------------------------------------------
+    # RECHERCHE FUZZY
+    # --------------------------------------------------------
+
+    def _fuzzy_find(
+        self,
+        value: str,
+        threshold: float = 0.88,
+    ) -> Optional[tuple[Food, float]]:
+
+        normalized = canonicalize_food_name(value)
+
+        if not normalized:
+            return None
+
+        best_food: Optional[Food] = None
+        best_score = 0.0
+
+        for candidate_name, food in self.normalized_map.items():
+
+            score = SequenceMatcher(
+                None,
+                normalized,
+                candidate_name,
+            ).ratio()
+
+            if score > best_score:
+                best_score = score
+                best_food = food
+
+        if best_food is not None and best_score >= threshold:
+            return best_food, round(best_score, 2)
+
+        return None
+
+    # --------------------------------------------------------
+    # RECHERCHE PRINCIPALE
+    # --------------------------------------------------------
+
+    def find_food(
+        self,
+        detected_name: str,
+    ) -> Optional[tuple[Food, float]]:
+
+        if not detected_name:
+            return None
+
+        original = normalize_text(detected_name)
+
+        if not original:
+            return None
+
+        # ----------------------------------------------------
+        # 1. Recherche exacte
+        # ----------------------------------------------------
+
+        food = self._find_exact(original)
+
+        if food:
+            return food, 1.0
+
+        # ----------------------------------------------------
+        # 2. Suppression des mots de préparation
+        # ----------------------------------------------------
+
+        without_preparation = self._remove_preparation_words(
+            original
+        )
+
+        if without_preparation and without_preparation != original:
+
+            food = self._find_exact(without_preparation)
+
+            if food:
                 return food, 1.0
-            if (len(norm_query) >= 4 and norm_query in term) or (len(term) >= 4 and term in norm_query):
-                return food, 0.90
 
-        # 3. Fuzzy matching
-        matches = difflib.get_close_matches(norm_query, list(self.term_to_food.keys()), n=1, cutoff=0.75)
-        if matches:
-            best_term = matches[0]
-            ratio = difflib.SequenceMatcher(None, norm_query, best_term).ratio()
-            return self.term_to_food[best_term], ratio
+        # ----------------------------------------------------
+        # 3. Gestion pluriel simple
+        # ----------------------------------------------------
+
+        singular = without_preparation
+
+        if singular.endswith("s") and len(singular) > 3:
+            singular = singular[:-1]
+
+        food = self._find_exact(singular)
+
+        if food:
+            return food, 0.98
+
+        # ----------------------------------------------------
+        # 4. Recherche fuzzy
+        # ----------------------------------------------------
+
+        fuzzy_result = self._fuzzy_find(
+            without_preparation or original
+        )
+
+        if fuzzy_result:
+            return fuzzy_result
+
+        # ----------------------------------------------------
+        # Aucun match
+        # ----------------------------------------------------
 
         return None
 
 
-def get_translated_food_name(food: Food, language: str = "fr") -> str:
-    """Récupère le nom traduit de l'aliment pour la langue souhaitée avec fallback."""
-    for trans in food.translations:
-        if trans.language_code == language:
-            return trans.name
-    # Fallback FR puis EN puis slug
-    for trans in food.translations:
-        if trans.language_code == "fr":
-            return trans.name
-    for trans in food.translations:
-        if trans.language_code == "en":
-            return trans.name
-    return food.slug
+# ============================================================
+# TRADUCTION DU NOM
+# ============================================================
 
+def get_translated_food_name(
+    db: Session,
+    food: Food,
+    language: str = "fr",
+) -> str:
+    """
+    Retourne le nom traduit d'un aliment.
+
+    Si une traduction correspondant à la langue demandée
+    existe, elle est utilisée.
+
+    Sinon, on utilise le slug comme fallback.
+    """
+
+    if food is None:
+        return ""
+
+    translations = getattr(
+        food,
+        "translations",
+        None,
+    )
+
+    if translations:
+
+        for translation in translations:
+
+            translation_language = getattr(
+                translation,
+                "language",
+                None,
+            )
+
+            if translation_language == language:
+
+                translated_name = getattr(
+                    translation,
+                    "name",
+                    None,
+                )
+
+                if translated_name:
+                    return translated_name
+
+    slug = getattr(
+        food,
+        "slug",
+        None,
+    )
+
+    if slug:
+        return slug.replace("_", " ")
+
+    return str(food)
+
+
+# ============================================================
+# MATCH + CALCUL
+# ============================================================
 
 def match_and_calculate_meal_items(
     db: Session,
-    raw_analysis: MealVisionAnalysis,
-    language: str = "fr",
-) -> MealAnalysisDetail:
+    detected_foods: list,
+) -> list:
     """
-    Rapproche chaque élément détecté par le modèle de vision avec la table Food,
-    puis utilise Meal Calculator pour déterminer macros et calories.
+    Associe les aliments détectés par l'IA aux aliments
+    existants dans la base Fitapp.
+
+    Cette fonction ne modifie pas les valeurs nutritionnelles
+    selon la préparation.
     """
-    food_index = FoodIndex.load_from_db(db)
 
-    matched_items: List[MatchedFoodAnalysisItem] = []
-    total_cals = Decimal("0")
-    total_prot = Decimal("0")
-    total_carbs = Decimal("0")
-    total_fat = Decimal("0")
-    total_fiber = Decimal("0")
+    index = FoodIndex.load_from_db(db)
 
-    for item in raw_analysis.foods:
-        match_result = food_index.find_food(item.name)
-        if match_result is None and item.alternatives:
-            # Essayer les alternatives suggérées par le modèle de vision
-            for alt in item.alternatives:
-                match_result = food_index.find_food(alt)
-                if match_result:
-                    break
+    results = []
 
-        food: Optional[Food] = None
-        match_score: float = 0.0
-        if match_result:
-            food, match_score = match_result
+    for detected in detected_foods:
 
-        # Déterminer si une confirmation ou correction est requise
-        needs_confirmation = item.confidence < HIGH_CONFIDENCE_THRESHOLD or (match_score < 0.90)
-        needs_correction = item.confidence < MEDIUM_CONFIDENCE_THRESHOLD or (food is None)
-
-        if food is not None:
-            # Calcul nutritionnel avec le Meal Calculator existant
-            unit = item.unit.strip().lower() if item.unit else "g"
-            # Si unité inconnue du calculator, repli sur "g"
-            if unit not in ("g", "kg", "ml", "l", "piece", "unit", "pcs"):
-                unit = "g"
-
-            try:
-                nutrition = calculate_food_nutrition(
-                    food=food,
-                    quantity=item.estimated_quantity,
-                    unit=unit,
-                )
-                grams = float(nutrition["grams"])
-                cals = float(nutrition["calories_kcal"])
-                prot = float(nutrition["protein_g"])
-                carbs = float(nutrition["carbs_g"])
-                fat = float(nutrition["fat_g"])
-                fiber = float(nutrition["fiber_g"])
-
-                total_cals += Decimal(str(cals))
-                total_prot += Decimal(str(prot))
-                total_carbs += Decimal(str(carbs))
-                total_fat += Decimal(str(fat))
-                total_fiber += Decimal(str(fiber))
-
-            except Exception:
-                # Si le calcul échoue (ex: pièce sans unit_weight_g), on laisse vide pour saisie utilisateur
-                grams = None
-                cals = None
-                prot = None
-                carbs = None
-                fat = None
-                fiber = None
-                needs_confirmation = True
-
-            matched_items.append(
-                MatchedFoodAnalysisItem(
-                    detected_name=item.name,
-                    matched=True,
-                    matched_food_id=food.id,
-                    matched_food_slug=food.slug,
-                    matched_food_name=get_translated_food_name(food, language),
-                    preparation=item.preparation,
-                    confidence=round(item.confidence, 2),
-                    alternatives=item.alternatives,
-                    needs_confirmation=needs_confirmation,
-                    needs_correction=needs_correction,
-                    estimated_quantity=item.estimated_quantity,
-                    estimated_unit=unit,
-                    calculated_grams=grams,
-                    calories_kcal=cals,
-                    protein_g=prot,
-                    carbs_g=carbs,
-                    fat_g=fat,
-                    fiber_g=fiber,
-                )
+        if isinstance(detected, dict):
+            detected_name = detected.get(
+                "food_name"
+            ) or detected.get(
+                "detected_name"
             )
+
+            quantity = detected.get(
+                "estimated_quantity_g"
+            )
+
+            preparation = detected.get(
+                "preparation"
+            )
+
+            confidence = detected.get(
+                "confidence"
+            )
+
         else:
-            # Aliment non trouvé en base
-            matched_items.append(
-                MatchedFoodAnalysisItem(
-                    detected_name=item.name,
-                    matched=False,
-                    matched_food_id=None,
-                    matched_food_slug=None,
-                    matched_food_name=None,
-                    preparation=item.preparation,
-                    confidence=round(item.confidence, 2),
-                    alternatives=item.alternatives,
-                    needs_confirmation=True,
-                    needs_correction=True,
-                    estimated_quantity=item.estimated_quantity,
-                    estimated_unit=item.unit or "g",
-                    calculated_grams=None,
-                    calories_kcal=None,
-                    protein_g=None,
-                    carbs_g=None,
-                    fat_g=None,
-                    fiber_g=None,
-                )
-            )
+            detected_name = str(detected)
+            quantity = None
+            preparation = None
+            confidence = None
 
-    totals = NutritionTotals(
-        calories=float(round(total_cals, 1)),
-        protein_g=float(round(total_prot, 1)),
-        carbs_g=float(round(total_carbs, 1)),
-        fat_g=float(round(total_fat, 1)),
-        fiber_g=float(round(total_fiber, 1)),
-    )
+        match = index.find_food(
+            detected_name
+        )
 
-    return MealAnalysisDetail(
-        meal_type=raw_analysis.meal_type,
-        overall_confidence=round(raw_analysis.overall_confidence, 2),
-        foods=matched_items,
-        totals=totals,
-        notes=raw_analysis.notes,
-    )
+        if match:
+
+            food, match_confidence = match
+
+            results.append({
+                "detected_name": detected_name,
+                "matched": True,
+                "matched_food_id": getattr(
+                    food,
+                    "id",
+                    None,
+                ),
+                "matched_food_slug": getattr(
+                    food,
+                    "slug",
+                    None,
+                ),
+                "matched_food_name": get_translated_food_name(
+                    db,
+                    food,
+                    "fr",
+                ),
+                "estimated_quantity_g": quantity,
+                "preparation": preparation,
+                "confidence": confidence,
+                "match_confidence": match_confidence,
+            })
+
+        else:
+
+            results.append({
+                "detected_name": detected_name,
+                "matched": False,
+                "matched_food_id": None,
+                "matched_food_slug": None,
+                "matched_food_name": None,
+                "estimated_quantity_g": quantity,
+                "preparation": preparation,
+                "confidence": confidence,
+                "match_confidence": 0.0,
+            })
+
+    return results
