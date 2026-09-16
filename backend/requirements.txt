@@ -15,4 +15,10 @@ alembic==1.14.0
 python-multipart==0.0.20
 Pillow==11.0.0
 pillow-heif==0.21.0
-gradio_client
+
+# Client Gradio pour le Space Hugging Face de vision (Qwen2.5-VL).
+# Epingle a la version testee localement (2.7.0, Gradio 6.x, parametre
+# Client(..., token=...)). Une version majeure differente (ex: 3.x) peut
+# renommer/retirer ce parametre comme cela a deja ete le cas en passant
+# de hf_token a token -> on autorise les correctifs mineurs uniquement.
+gradio_client>=2.7.0,<3.0.0
