@@ -88,10 +88,20 @@ class HuggingFaceVisionService:
                 bool(HUGGINGFACE_TOKEN),
             )
 
-            self.client = Client(
-                SPACE_ID,
-                hf_token=HUGGINGFACE_TOKEN,
-            )
+            try:
+                # gradio_client >= 6.x (Gradio 6 migration guide) a
+                # renomme le parametre hf_token en token.
+                self.client = Client(
+                    SPACE_ID,
+                    token=HUGGINGFACE_TOKEN,
+                )
+            except TypeError:
+                # Compatibilite avec les versions plus anciennes de
+                # gradio_client (< 6.x) qui utilisent encore hf_token.
+                self.client = Client(
+                    SPACE_ID,
+                    hf_token=HUGGINGFACE_TOKEN,
+                )
 
         return self.client
 
