@@ -11,12 +11,17 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.medben.fitapp",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "versionCode": 3
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -33,6 +38,12 @@
           "photosPermission": "Fitapp a besoin d'accéder à tes photos pour analyser un repas."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5e790d32-7346-4a1f-8a18-f9193adb1a8c"
+      }
+    }
   }
 }
